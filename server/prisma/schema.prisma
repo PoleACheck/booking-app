@@ -7,10 +7,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Booking {
+model User {
   id        Int      @id @default(autoincrement())
-  name      String
-  email     String
-  date      DateTime
-  createdAt DateTime @default(now())
+  firstName String   @map("Imie")
+  lastName  String   @map("Nazwisko")
+  email     String   @unique @map("E_mail")
+  password  String   @map("Haslo")
+  phone     String   @map("Nr_telefonu")
+  role      String   @default("user") // "user" or "admin"
+  
+  visits    Visit[]
+  
+  @@map("Uzytkownicy")
+}
+
+model Service {
+  id    Int    @id @default(autoincrement())
+  name  String @map("Nazwa_Uslugi")
+  price Int    @map("Cena") // Przechowujemy w groszach lub pełnych PLN
+
+  @@map("Uslugi")
+}
+
+model Visit {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @map("Data_wizyty") // Przechowuje datę i godzinę
+  patientLast String?  @map("Nazwisko_Pacjenta")
+  patientFirst String? @map("Imie_Pacjenta")
+  info        String?  @map("Informacje_od_Pacjenta")
+  isTaken     Boolean  @default(false) @map("Zajete")
+  
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+  
+  serviceName String? // Kopjujemy nazwę usługi dla historii
+
+  @@map("Wizyty")
 }

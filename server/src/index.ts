@@ -1,17 +1,9 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-import { db } from './db';
-dotenv.config();
+import app from './app';
+import { initCronJobs } from './utils/cronJobs';
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+const PORT = process.env.PORT || 3000;
 
-app.get("/", async (req, res) => {
-  const bookings = await db.booking.findMany(); // przykładowe zapytanie
-  res.json(bookings);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  initCronJobs();
 });
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Serwer działa na porcie ${PORT}`));
