@@ -18,6 +18,7 @@ const Booking = () => {
   const [description, setDescription] = useState('');
   
   const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   useEffect(() => {
     axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/services`).then(res => setServices(res.data));
@@ -42,6 +43,16 @@ const Booking = () => {
         alert('Wystąpił nieoczekiwany błąd.');
       }
     }
+  };
+
+  const getFormattedDateString = (date: Date) => {
+    const dayOfWeek = date.toLocaleDateString('pl-PL', { weekday: 'long' });
+    const dayOfWeekCap = dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1);
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const time = date.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+
+    return `${dayOfWeekCap}, ${day}-${month} | ${time}`;
   };
 
   return (
@@ -73,7 +84,12 @@ const Booking = () => {
         </div>
 
         <div className="mt-auto bg-blue-50 p-4 rounded">
-            <p className="font-bold">Wybrany slot ID: {selectedSlotId || 'Brak'}</p>
+            <p className="font-bold mb-2">
+              {selectedSlotId && selectedDate 
+                ? `Wybrany termin: ${getFormattedDateString(selectedDate)}`
+                : 'Nie wybrano terminu'}
+            </p>
+            
             <button 
                 onClick={handleConfirm}
                 className="w-full mt-2 bg-green-600 text-white py-3 font-bold rounded hover:bg-green-700"
@@ -86,10 +102,13 @@ const Booking = () => {
       {/* Prawa kolumna: Kalendarz */}
       <div className="w-2/3 pl-4">
         <h2 className="font-bold text-xl mb-4">Wybierz termin</h2>
-        {/* Używamy komponentu w trybie 'booking' */}
         <CalendarView 
             mode="booking" 
-            onSlotSelect={(id) => setSelectedSlotId(id)} 
+            selectedId={selectedSlotId} // <--- PRZEKAZUJEMY WYBRANE ID
+            onSlotSelect={(id, date) => {
+              setSelectedSlotId(id);
+              setSelectedDate(date);
+            }} 
         />
       </div>
     </div>

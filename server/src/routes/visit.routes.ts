@@ -7,7 +7,8 @@ import {
   getAllVisitsAdmin, 
   toggleSlotAvailability,
   rescheduleVisit,
-  toggleDayAvailability
+  toggleDayAvailability,
+  getFirstAvailableSlotDate
 } from '../controllers/visit.controller';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.middleware';
 
@@ -15,6 +16,7 @@ const router = Router();
 
 // Publiczne / User
 router.get('/slots', getSlots);
+router.get('/first-available', getFirstAvailableSlotDate);
 router.post('/book', authMiddleware, bookVisit);
 router.get('/my-visits', authMiddleware, getUserVisits);
 router.post('/cancel/:id', authMiddleware, cancelVisit);

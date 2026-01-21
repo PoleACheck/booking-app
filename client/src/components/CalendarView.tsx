@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios, { isAxiosError } from 'axios';
-import { format, addDays, startOfWeek } from 'date-fns';
+import { format, addDays, startOfWeek, isSameDay } from 'date-fns';
 import { pl } from 'date-fns/locale';
 
 interface Props {
-  mode: 'booking' | 'admin-block' | 'admin-reschedule'; // Tryby działania
-  onSlotSelect?: (slotId: number) => void; // Callback po kliknięciu
-  refreshTrigger?: number; // Do odświeżania z zewnątrz
+  mode: 'booking' | 'admin-block' | 'admin-reschedule';
+  onSlotSelect?: (slotId: number, date: Date) => void; 
+  refreshTrigger?: number;
+  selectedId?: number | null; // <--- NOWOŚĆ: ID aktualnie wybranego slotu (do stylowania)
 }
 
 interface Slot {
@@ -15,11 +16,13 @@ interface Slot {
   isTaken: boolean;
 }
 
-const CalendarView = ({ mode, onSlotSelect, refreshTrigger }: Props) => {
+const CalendarView = ({ mode, onSlotSelect, refreshTrigger, selectedId }: Props) => {
   const [currentWeekStart, setCurrentWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [slots, setSlots] = useState<Slot[]>([]);
   
-  // Pobieranie slotów
+  // Blokada cofania się do przeszłych tygodni
+  const minDate = startOfWeek(new Date(), { weekStartsOn: 1 });
+
   const fetchSlots = useCallback(async () => {
     const startStr = format(currentWeekStart, 'yyyy-MM-dd');
     const endStr = format(addDays(currentWeekStart, 4), 'yyyy-MM-dd'); // 5 dni (Pn-Pt)
@@ -33,13 +36,12 @@ const CalendarView = ({ mode, onSlotSelect, refreshTrigger }: Props) => {
     fetchSlots();
   }, [fetchSlots, refreshTrigger]);
 
-  // Funkcja obsługująca kliknięcie w slot
   const handleSlotClick = async (slot: Slot) => {
-    // Tryb blokowania (Admin) [cite: 96]
+    // 1. Logika Admina (Blokowanie)
     if (mode === 'admin-block') {
       try {
         await axios.patch(`${import.meta.env.VITE_API_BASE_URL}/api/visits/admin/toggle/${slot.id}`);
-        fetchSlots(); // Odśwież natychmiast po zmianie
+        fetchSlots();
       } catch (err) {
         if (isAxiosError(err)) {
           alert(err.response?.data?.message || 'Wystąpił błąd serwera');
@@ -50,15 +52,16 @@ const CalendarView = ({ mode, onSlotSelect, refreshTrigger }: Props) => {
       return;
     }
 
-    // Tryb rezerwacji lub przekładania
+    // 2. Logika Pacjenta (Rezerwacja)
     if (onSlotSelect) {
-      // Nie pozwól wybrać zajętego slotu (chyba że to admin blokuje, ale to wyżej)
-      if (slot.isTaken) return; 
-      onSlotSelect(slot.id);
+      // Blokada: Nie można wybrać zajętego LUB przeszłego terminu
+      const isPast = new Date(slot.date) < new Date();
+      if (slot.isTaken || isPast) return; 
+
+      onSlotSelect(slot.id, new Date(slot.date));
     }
   };
 
-  // Funkcja blokowania całego dnia [cite: 98]
   const handleDayClick = async (dayDate: Date) => {
     if (mode !== 'admin-block') return;
     if (!confirm(`Czy na pewno chcesz zmienić dostępność dla dnia ${format(dayDate, 'yyyy-MM-dd')}?`)) return;
@@ -77,30 +80,35 @@ const CalendarView = ({ mode, onSlotSelect, refreshTrigger }: Props) => {
     }
   };
 
-  // Helper do filtrowania slotów per dzień
   const getSlotsForDay = (day: Date) => {
     const dayStr = format(day, 'yyyy-MM-dd');
-    return slots.filter(s => s.date.startsWith(dayStr)); // DB zwraca ISO string
+    return slots.filter(s => s.date.startsWith(dayStr));
   };
 
   const weekDays = Array.from({ length: 5 }).map((_, i) => addDays(currentWeekStart, i));
 
+  // Sprawdzamy czy zablokować przycisk "Poprzedni tydzień"
+  const isBackDisabled = isSameDay(currentWeekStart, minDate) || currentWeekStart < minDate;
+
   return (
     <div className="flex flex-col">
-      {/* Nawigacja Tygodnia [cite: 52] */}
       <div className="flex justify-between items-center mb-4 bg-gray-100 p-2 rounded">
-        <button onClick={() => setCurrentWeekStart(addDays(currentWeekStart, -7))} className="font-bold px-4">&lt; Poprzedni tydzień</button>
+        <button 
+            onClick={() => setCurrentWeekStart(addDays(currentWeekStart, -7))} 
+            className={`font-bold px-4 ${isBackDisabled ? 'text-gray-400 cursor-not-allowed' : 'hover:text-blue-600'}`}
+            disabled={isBackDisabled}
+        >
+            &lt; Poprzedni tydzień
+        </button>
         <span className="font-bold">
             {format(weekDays[0], 'dd.MM')} - {format(weekDays[4], 'dd.MM.yyyy')}
         </span>
-        <button onClick={() => setCurrentWeekStart(addDays(currentWeekStart, 7))} className="font-bold px-4">Następny tydzień &gt;</button>
+        <button onClick={() => setCurrentWeekStart(addDays(currentWeekStart, 7))} className="font-bold px-4 hover:text-blue-600">Następny tydzień &gt;</button>
       </div>
 
-      {/* Siatka Kalendarza [cite: 45] */}
       <div className="flex overflow-x-auto gap-2">
         {weekDays.map((day, i) => (
           <div key={i} className="flex-1 min-w-[140px]">
-            {/* Nagłówek dnia z opcją blokady [cite: 98] */}
             <div 
               className={`text-center font-bold p-2 rounded-t cursor-pointer border-b-2 ${mode === 'admin-block' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-gray-200'}`}
               onClick={() => handleDayClick(day)}
@@ -110,21 +118,27 @@ const CalendarView = ({ mode, onSlotSelect, refreshTrigger }: Props) => {
               {mode === 'admin-block' && <div className="text-xs text-blue-800 font-normal">(Zmień cały dzień)</div>}
             </div>
 
-            {/* Lista slotów [cite: 47] */}
             <div className="flex flex-col gap-2 p-2 bg-gray-50 border h-96 overflow-y-auto">
               {getSlotsForDay(day).map(slot => {
                 const time = format(new Date(slot.date), 'HH:mm');
-                
-                // Style przycisków [cite: 48-50]
+                const isPast = new Date(slot.date) < new Date();
+                const isSelected = selectedId === slot.id; // Sprawdzamy czy to ten wybrany
+
                 let btnClass = "p-2 rounded border text-center transition-colors ";
                 
                 if (slot.isTaken) {
-                    // Jeśli zajęty (szary)
+                    // 1. ZAJĘTY / ZABLOKOWANY
                     btnClass += mode === 'admin-block' 
-                        ? "bg-red-100 border-red-300 text-red-800 cursor-pointer hover:bg-red-200" // Admin widzi blokady jako aktywne do zdjęcia
-                        : "bg-gray-300 text-gray-500 cursor-not-allowed"; // User widzi jako niedostępne
+                        ? "bg-red-100 border-red-300 text-red-800 cursor-pointer hover:bg-red-200" 
+                        : "bg-gray-300 text-gray-500 cursor-not-allowed";
+                } else if (isPast && mode === 'booking') {
+                    // 2. PRZESZŁY
+                    btnClass += "bg-gray-200 text-gray-400 cursor-not-allowed"; 
+                } else if (isSelected) {
+                    // 3. WYBRANY (Przywrócona funkcjonalność: Zielone tło, Biały tekst)
+                    btnClass += "bg-green-600 text-white border-green-700 font-bold hover:bg-green-700";
                 } else {
-                    // Jeśli wolny (jasny)
+                    // 4. WOLNY (Domyślny)
                     btnClass += "bg-white hover:bg-green-50 cursor-pointer border-green-200";
                 }
 
@@ -133,7 +147,7 @@ const CalendarView = ({ mode, onSlotSelect, refreshTrigger }: Props) => {
                     key={slot.id}
                     className={btnClass}
                     onClick={() => handleSlotClick(slot)}
-                    disabled={mode === 'booking' && slot.isTaken}
+                    disabled={mode === 'booking' && (slot.isTaken || isPast)}
                   >
                     {time} {mode === 'admin-block' && slot.isTaken ? '(Zajęty)' : ''}
                   </button>

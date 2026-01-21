@@ -3,10 +3,10 @@ import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { prisma } from '../config/db';
 
-// 1. Pobieranie dostępnych slotów (Dla Kalendarza) [cite: 45-54]
+// 1. Pobieranie dostępnych slotów
 export const getSlots = async (req: Request, res: Response) => {
   try {
-    const { start, end } = req.query; // format: YYYY-MM-DD
+    const { start, end } = req.query;
     
     if (!start || !end) {
       return res.status(400).json({ message: 'Wymagane parametry start i end' });
@@ -14,7 +14,6 @@ export const getSlots = async (req: Request, res: Response) => {
 
     const startDate = new Date(start as string);
     const endDate = new Date(end as string);
-    // Ustawienie końca dnia dla daty końcowej
     endDate.setHours(23, 59, 59, 999);
 
     const slots = await prisma.visit.findMany({
@@ -33,7 +32,7 @@ export const getSlots = async (req: Request, res: Response) => {
   }
 };
 
-// 2. Rezerwacja wizyty (Aktualizacja slotu) [cite: 43, 53]
+// 2. Rezerwacja wizyty
 export const bookVisit = async (req: AuthRequest, res: Response) => {
   try {
     const { slotId, serviceId, description } = req.body;
@@ -41,19 +40,26 @@ export const bookVisit = async (req: AuthRequest, res: Response) => {
 
     if (!userId) return res.status(401).json({ message: 'Nieautoryzowany' });
 
-    // Pobranie nazwy usługi i danych użytkownika
     const service = await prisma.service.findUnique({ where: { id: Number(serviceId) } });
     const user = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!service || !user) return res.status(400).json({ message: 'Błędne dane' });
 
-    // Sprawdzenie czy slot jest wolny
     const slot = await prisma.visit.findUnique({ where: { id: slotId } });
-    if (!slot || slot.isTaken) {
-      return res.status(409).json({ message: 'Termin już zajęty' });
-    }
+    
+    if (!slot) return res.status(404).json({ message: 'Termin nie istnieje' });
+    if (slot.isTaken) return res.status(409).json({ message: 'Termin już zajęty' });
 
-    // Aktualizacja rekordu wizyty (Booking)
+    // --- NOWA WALIDACJA: Blokada rezerwacji na dzisiaj i przeszłość ---
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0); // Północ jutra
+
+    if (new Date(slot.date) < tomorrow) {
+      return res.status(400).json({ message: 'Rezerwacja możliwa najwcześniej na jutro.' });
+    }
+    // ------------------------------------------------------------------
+
     const updatedVisit = await prisma.visit.update({
       where: { id: slotId },
       data: {
@@ -72,7 +78,7 @@ export const bookVisit = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// 3. Pobieranie wizyt użytkownika (Twoje Wizyty) [cite: 67-68]
+// 3. Pobieranie wizyt użytkownika
 export const getUserVisits = async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
@@ -89,28 +95,32 @@ export const getUserVisits = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// 4. Anulowanie wizyty przez użytkownika (Zasada 72h) [cite: 68-69]
+// 4. Anulowanie wizyty
 export const cancelVisit = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const userId = req.user?.userId;
+    const userRole = req.user?.role; // Zakładamy, że rola jest w tokenie
 
     const visit = await prisma.visit.findUnique({ where: { id: Number(id) } });
 
-    if (!visit || visit.userId !== userId) {
-      return res.status(403).json({ message: 'Brak dostępu do tej wizyty' });
+    if (!visit) return res.status(404).json({ message: 'Wizyta nie istnieje' });
+
+    // Jeśli to nie admin, sprawdzamy właściciela i czas 72h
+    if (userRole !== 'admin') {
+       if (visit.userId !== userId) {
+         return res.status(403).json({ message: 'Brak dostępu do tej wizyty' });
+       }
+       
+       const now = new Date();
+       const visitDate = new Date(visit.date);
+       const diffHours = (visitDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+
+       if (diffHours < 72) {
+         return res.status(400).json({ message: 'Za późno na odwołanie wizyty (wymagane 72h)' });
+       }
     }
 
-    // Sprawdzenie czasu (72h)
-    const now = new Date();
-    const visitDate = new Date(visit.date);
-    const diffHours = (visitDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-
-    if (diffHours < 72) {
-      return res.status(400).json({ message: 'Za późno na odwołanie wizyty (wymagane 72h)' });
-    }
-
-    // Reset slotu (zwolnienie terminu)
     await prisma.visit.update({
       where: { id: Number(id) },
       data: {
@@ -129,15 +139,15 @@ export const cancelVisit = async (req: AuthRequest, res: Response) => {
   }
 };
 
-// --- SEKCJA PRACOWNIKA --- [cite: 83-100]
+// --- ADMIN ---
 
-// 5. Pobranie wszystkich wizyt (Zarządzaj wizytami)
+// 5. Pobranie wszystkich wizyt
 export const getAllVisitsAdmin = async (req: Request, res: Response) => {
   try {
     const visits = await prisma.visit.findMany({
-      where: { isTaken: true }, // Pobieramy tylko umówione
+      where: { isTaken: true, userId: { not: null } },
       orderBy: { date: 'asc' },
-      include: { user: { select: { email: true, phone: true } } } // Opcjonalnie dane kontaktowe
+      include: { user: { select: { email: true, phone: true } } }
     });
     res.json(visits);
   } catch (error) {
@@ -145,7 +155,7 @@ export const getAllVisitsAdmin = async (req: Request, res: Response) => {
   }
 };
 
-// 6. Wyłączanie/Włączanie slotu (Wyłącz dni/godziny) [cite: 96]
+// 6. Wyłączanie/Włączanie slotu
 export const toggleSlotAvailability = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -153,15 +163,8 @@ export const toggleSlotAvailability = async (req: Request, res: Response) => {
     const visit = await prisma.visit.findUnique({ where: { id: Number(id) } });
     if (!visit) return res.status(404).json({ message: 'Slot nie istnieje' });
 
-    // Jeśli jest zajęta przez pacjenta, nie można tak po prostu wyłączyć (logika biznesowa)
-    // Ale w trybie "wyłączania dostępności" zakładamy, że pracownik wie co robi.
-    // Tutaj prosta implementacja toggle isTaken (jako blokady)
-
-    // Jeśli slot był wolny (false) -> blokujemy (true) bez danych pacjenta
-    // Jeśli slot był zablokowany (true) i nie ma pacjenta -> zwalniamy (false)
-    
     if (visit.isTaken && visit.userId) {
-      return res.status(400).json({ message: 'Nie można zablokować terminu z umówionym pacjentem. Najpierw anuluj wizytę.' });
+      return res.status(400).json({ message: 'Nie można zablokować terminu z umówionym pacjentem.' });
     }
 
     const newState = !visit.isTaken;
@@ -176,22 +179,19 @@ export const toggleSlotAvailability = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Błąd edycji slotu' });
   }
 };
-// 7. Przełożenie wizyty (Admin - Edycja terminu)
+
+// 7. Przełożenie wizyty
 export const rescheduleVisit = async (req: AuthRequest, res: Response) => {
   try {
-    const { visitId, newSlotId } = req.body; // ID starej wizyty i ID nowego slotu
+    const { visitId, newSlotId } = req.body;
 
-    // Transakcja: Zwolnij stary termin, zajmij nowy
     await prisma.$transaction(async (tx) => {
-      // 1. Pobierz starą wizytę
       const oldVisit = await tx.visit.findUnique({ where: { id: visitId } });
       if (!oldVisit || !oldVisit.isTaken) throw new Error('Wizyta nie istnieje');
 
-      // 2. Pobierz nowy slot
       const newSlot = await tx.visit.findUnique({ where: { id: newSlotId } });
       if (!newSlot || newSlot.isTaken) throw new Error('Nowy termin jest zajęty');
 
-      // 3. Zaktualizuj nowy slot danymi pacjenta
       await tx.visit.update({
         where: { id: newSlotId },
         data: {
@@ -204,7 +204,6 @@ export const rescheduleVisit = async (req: AuthRequest, res: Response) => {
         }
       });
 
-      // 4. Wyczyść stary slot
       await tx.visit.update({
         where: { id: visitId },
         data: {
@@ -227,33 +226,31 @@ export const rescheduleVisit = async (req: AuthRequest, res: Response) => {
 // 8. Blokowanie całego dnia
 export const toggleDayAvailability = async (req: Request, res: Response) => {
   try {
-    const { date } = req.body; // format: YYYY-MM-DD
+    const { date } = req.body;
     const start = new Date(date);
     start.setHours(0,0,0,0);
     const end = new Date(date);
     end.setHours(23,59,59,999);
 
-    // Sprawdzamy czy w tym dniu są jakieś aktywne wizyty pacjentów
     const activeVisits = await prisma.visit.findFirst({
       where: {
         date: { gte: start, lte: end },
         isTaken: true,
-        userId: { not: null } // Zakładamy, że blokada (userId=null, isTaken=true) się nie liczy jako "aktywna wizyta"
+        userId: { not: null }
       }
     });
 
     if (activeVisits) {
-      return res.status(400).json({ message: 'W tym dniu są umówieni pacjenci. Odwołaj wizyty ręcznie.' });
+      return res.status(400).json({ message: 'W tym dniu są umówieni pacjenci.' });
     }
 
-    // Sprawdzamy stan pierwszego slotu, żeby wiedzieć czy blokować czy odblokowywać (toggle)
     const firstSlot = await prisma.visit.findFirst({
       where: { date: { gte: start, lte: end } }
     });
 
     if (!firstSlot) return res.status(404).json({ message: 'Brak slotów w tym dniu' });
 
-    const shouldBlock = !firstSlot.isTaken; // Jeśli wolny -> blokujemy, jeśli zajęty (zablokowany) -> zwalniamy
+    const shouldBlock = !firstSlot.isTaken;
 
     await prisma.visit.updateMany({
       where: { date: { gte: start, lte: end } },
@@ -263,5 +260,29 @@ export const toggleDayAvailability = async (req: Request, res: Response) => {
     res.json({ message: shouldBlock ? 'Dzień zablokowany' : 'Dzień odblokowany' });
   } catch (error) {
     res.status(500).json({ message: 'Błąd edycji dnia' });
+  }
+};
+// 9. Pobierz datę pierwszej dostępnej wizyty (dla inicjalizacji kalendarza)
+export const getFirstAvailableSlotDate = async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    
+    // Szukamy pierwszego terminu, który jest w przyszłości i jest wolny
+    const firstSlot = await prisma.visit.findFirst({
+      where: {
+        date: { gte: now }, // Od teraz
+        isTaken: false      // Tylko wolne
+      },
+      orderBy: { date: 'asc' }
+    });
+
+    if (!firstSlot) {
+        // Fallback: jeśli wszystko zajęte do 2030 roku, zwróć dzisiejszą datę
+        return res.json({ date: now });
+    }
+
+    res.json({ date: firstSlot.date });
+  } catch (error) {
+    res.status(500).json({ message: 'Błąd pobierania daty' });
   }
 };

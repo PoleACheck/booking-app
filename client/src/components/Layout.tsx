@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom'; // 1. Dodano useLocation
 import AuthModal from './AuthModal';
 import { useAuth } from '../context/AuthContext';
 
@@ -7,25 +7,48 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, logout } = useAuth();
   const [isAuthModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  
+  // 2. Pobieramy aktualną lokalizację (ścieżkę)
+  const location = useLocation();
 
   const openAuth = (mode: 'login' | 'register') => {
     setAuthMode(mode);
     setAuthModalOpen(true);
   };
 
+  // 3. Funkcja mapująca ścieżkę na tytuł strony
+  const getPageTitle = (pathname: string) => {
+    switch (pathname) {
+      case '/':
+        return 'O NAS';
+      case '/booking':
+        return 'UMÓW WIZYTĘ';
+      case '/my-visits':
+        return 'TWOJE WIZYTY';
+      case '/pricing':
+        return 'CENNIK';
+      case '/contact':
+        return 'KONTAKT';
+      case '/employee':
+        return 'DLA PRACOWNIKÓW';
+      default:
+        return 'SYSTEM REZERWACJI WIZYT'; // Domyślny tytuł
+    }
+  };
+
   return (
     <div className="flex min-h-screen">
       {/* LEWY PANEL (ok. 25%) */}
       <aside className="w-1/4 bg-gray-100 flex flex-col border-r border-gray-300">
-        {/* Placeholder Logo [cite: 30] */}
+        {/* Placeholder Logo */}
         <div className="h-40 bg-gray-300 flex items-center justify-center">
           <span className="text-gray-500 font-bold text-xl">LOGO</span>
         </div>
         
-        {/* Linia oddzielająca [cite: 31] */}
+        {/* Linia oddzielająca */}
         <hr className="border-gray-400" />
         
-        {/* Menu [cite: 31-32] */}
+        {/* Menu */}
         <div className="flex-grow">
           <div className="p-2 font-bold text-center">Menu</div>
           <nav className="flex flex-col">
@@ -38,7 +61,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
           </nav>
         </div>
 
-        {/* Sekcja użytkownika [cite: 33] */}
+        {/* Sekcja użytkownika */}
         <div className="p-4 bg-gray-200 text-center">
           <div className="mb-2">👤 {user ? `${user.firstName} ${user.lastName}` : 'Niezalogowany'}</div>
           {user ? (
@@ -52,11 +75,12 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </aside>
 
-      {/* PRAWA SEKCJA (75%) [cite: 36-37] */}
+      {/* PRAWA SEKCJA (75%) */}
       <main className="w-3/4 flex flex-col">
         {/* Nagłówek */}
         <header className="py-6 text-center border-b-2 border-gray-200">
-          <h1 className="text-3xl font-bold uppercase">System Rezerwacji Wizyt</h1>
+          {/* 4. Podmiana statycznego tekstu na dynamiczny tytuł */}
+          <h1 className="text-3xl font-bold uppercase">{getPageTitle(location.pathname)}</h1>
         </header>
         
         {/* Treść */}
@@ -65,7 +89,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </main>
 
-      {/* Popup logowania [cite: 34-35] */}
+      {/* Popup logowania */}
       {isAuthModalOpen && (
         <AuthModal mode={authMode} onClose={() => setAuthModalOpen(false)} />
       )}

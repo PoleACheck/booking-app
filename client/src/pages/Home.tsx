@@ -9,7 +9,8 @@ const Home = () => {
       {/* Lewa strona (Tekst - 60% szerokości sekcji wg specyfikacji) */}
       <div className="w-3/5 pr-8 flex flex-col justify-center">
         <p className="mb-6 text-gray-600">
-          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin nibh augue, suscipit a, scelerisque sed, lacinia in, mi. Cras vel lorem.
+          Jesteśmy praktyką zawodową, która leczy Państwa zęby od ponad 20 lat. Dzięki naszemu doświadczeniu oraz wykwalifikowanej kadrze,
+gwarantujemy najlepszą jakość usług. Dokładamy wszelkich starań, aby każda Państwa wizyta była bezbolesna i skończyła się Państwa szerokim uśmiechem!
         </p>
         <p className="mb-8 text-lg font-medium text-gray-800">
           Zadbaj o swój uśmiech w nowoczesnym gabinecie stomatologicznym. Oferujemy kompleksowe leczenie w komfortowych warunkach. Twój uśmiech jest naszą pasją!
