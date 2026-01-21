@@ -149,7 +149,7 @@ const EmployeePanel = () => {
         </>
       )}
 
-      {/* 7.2 WYŁĄCZ DNI/GODZINY [cite: 94-99] */}
+      {/* 7.2 WYŁĄCZ DNI/GODZINY */}
       {activeTab === 'availability' && (
         <div className="bg-white p-4 shadow rounded">
           <div className="mb-4 bg-yellow-50 p-3 border-l-4 border-yellow-400 text-sm">
